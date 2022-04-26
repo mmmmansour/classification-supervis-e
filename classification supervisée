@@ -1,0 +1,135 @@
+// research/////////Pour chercher l'image//////////////////////////////////////////////////
+var Dec_whisoutCloud= sentinel2.filterDate('2021-01-01', '2021-01-31')
+                  .filterBounds(dakar)
+
+          ///     .filterMetadata('CLOUD_COVERAGE_ASSESSMENT','equals',90)
+                 
+  print (Dec_whisoutCloud)   
+
+var imtest =ee.ImageCollection(['COPERNICUS/S2_SR/20210102T113359_20210102T113446_T27PZS']).mosaic().clipToCollection(dakar)
+var imtest0 =ee.ImageCollection([''])
+var imtest1 =ee.ImageCollection([''])
+var imtest2 =ee.ImageCollection([''])
+var imtest3 =ee.ImageCollection([''])
+var imtest4 =ee.ImageCollection([''])
+var imtest5 =ee.ImageCollection([''])
+var imtest6 =ee.ImageCollection([''])
+var imtest7 =ee.ImageCollection([''])
+var imtest8 =ee.ImageCollection([''])
+var imtest9 =ee.ImageCollection([''])
+var imtest10 =ee.ImageCollection([''])
+
+
+var trueColor432 = imtest.select(['B11', 'B8', 'B4']);
+// //var trueColor432 = trueColor432.clip(dakar)
+var trueColor432Vis = {
+  min: 0.0,
+  max: 0.4,
+};
+Map.setCenter(-17.32, 14.76, 9);
+Map.addLayer(trueColor432, trueColor432Vis, 'True Color (432)');
+//////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+  var Janvier2021 =ee.ImageCollection(['COPERNICUS/S2_SR/20210102T113359_20210102T113446_T27PZS']).mosaic().clipToCollection(dakar)
+                   
+ 
+ //////////////////////////////////je_définie_mes_class////////////////////////////
+  var pt_zone = ee.FeatureCollection([water,vegetation,solnu,urban,sable_tanne]);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////CALCUL D'INDICES/////////////////////////////////////////////////
+ 
+
+var     CalIndice= Janvier2021.select("B1","B2", "B3", "B4", "B5",'B6','B7',"B8", "B9", "B11")
+ 
+              
+   var NDVI= CalIndice.clip(dakar).normalizedDifference(['B8','B4']).rename('NDVI');
+         
+    var NBR= CalIndice.clip(dakar).normalizedDifference(['B8','B6']).rename('NBR');
+      
+     var NDWI= CalIndice.clip(dakar).normalizedDifference(['B3','B8']).rename('NDWI');
+    
+    var SAVI = CalIndice.expression(
+                  '((NIR - RED) / (NIR + RED+0.5))* 1.5 ', {
+                  'NIR': CalIndice.clip(dakar).select('B8'),
+                  'RED': CalIndice.clip(dakar).select('B4')
+                  }).rename('SAVI');
+
+  var IB = CalIndice.expression(
+                  'sqrt(NIR*NIR + RED*RED)', {
+                  'NIR': CalIndice.clip(dakar).select('B8'),
+                  'RED': CalIndice.clip(dakar).select('B4')
+                  }).rename('IB');    
+      
+  var BAI= CalIndice.expression(
+                  '1/( (0.1-RED)*(0.1-RED)+(0.06-NIR)*(0.06-NIR) )',{
+                   
+                  'RED': CalIndice.clip(dakar).select('B4'),
+                  'NIR': CalIndice.clip(dakar).select('B8')
+                  }).rename('BAI');                    
+     
+ var CalIndice= CalIndice.addBands([NDVI,NBR,NDWI,SAVI,IB,BAI]) 
+  
+  
+  print('image et indexes',CalIndice)
+ 
+////////////////////////////////////////mes_class_et_mes_bandes////////////////////////////////////////
+var pt_zone = ee.FeatureCollection([water,sable_tanne,vegetation,solnu,urban]);
+print('ee.FeatureCollection',pt_zone);
+ 
+
+var bands = ['B2','B3','B4','B5','B6','B7','B8','B9', 'B11'];
+print(pt_zone)
+
+////////////////////ui.chart/////////////pour tracer les graphes////csv et autres//////////////////////////
+
+var training = CalIndice.sampleRegions(pt_zone,['Class'],50);
+
+print(training.size());
+
+print( ui.Chart.image.regions({
+  image: CalIndice, 
+  regions: pt_zone,
+  scale:30, 
+
+  seriesProperty: 'Class'
+}));
+
+//////////////CLASSIFICATION DE L'image///////////////
+
+var classifier = ee.Classifier.smileCart()//ee.Classifier.libsvm()
+ 
+var trained=  classifier.train({
+  features:training,
+  classProperty:'Class',
+  inputProperties: ['B2','B3','B4','B5','B6','B7','B8','B9','B11']
+  });
+  
+  
+var classified= CalIndice.select(bands).classify(trained)
+ 
+Map.addLayer(classified,{min:0,max:4,palette: ['35bc19','172fff','ead93d','eef1e6','00e8e8']},'CalIndice')
+var classified1= CalIndice.select(bands).classify(trained)
+
+Export.image.toDrive({
+image:classified,
+description:'CalIndice',
+region:dakar,
+scale:10,
+maxPixels:1e9
+});
+
+
+///pour seuiller limage///////////
+var classified = classified1.focal_median(100,'circle','meters')
+////////////////////////////////////////////////////////////////
+print('test classif',classified);
+ 
+//Map.addLayer(classified,{min:0,max:4,palette: ['35bc19','172fff','ead93d','eef1e6','00e8e8']},'CalIndice')
+ 
+
+print(trained.confusionMatrix())
+
+
